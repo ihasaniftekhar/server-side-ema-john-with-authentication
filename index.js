@@ -3,7 +3,17 @@ const app = express();
 const { MongoClient } = require('mongodb');
 const port = process.env.PORT || 5000;
 const cors = require('cors');
+var admin = require("firebase-admin");
 require('dotenv').config();
+
+
+// Firebase Admin Initialize 
+
+var serviceAccount = require("./ema-john-and-authentication-firebase-adminsdk-fx4o8-41f0790e76.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
 
 
 //middleware
@@ -14,6 +24,19 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.9mo66.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
+async function verifyToken(req, res, next) {
+    if (req.headers.authorization?.startsWith('Bearer ')) {
+        const idToken = req.headers.authorization.split('Bearer ')[1];
+        try {
+            const decodedUser = await admin.auth().verifyIdToken(idToken);
+            req.decodedUserEmail = decodedUser.email;
+        }
+        catch {
+
+        }
+    }
+    next();
+}
 
 async function run() {
     try {
@@ -63,6 +86,22 @@ async function run() {
             const result = await productsCollection.find({ category: 'laptop' }).toArray();
             console.log(result);
             res.send(result);
+        });
+
+        // Orders API
+        app.get('/orders', verifyToken, async (req, res) => {
+            const email = req.query.email;
+
+            if (req.decodedUserEmail === email) {
+                const query = { email: email }
+                const cursor = orderCollection.find(query);
+                const orders = await cursor.toArray();
+                res.send(orders);
+            }
+            else {
+                res.status(401).json({ message: 'User not authorized' })
+            }
+
         })
 
     }
